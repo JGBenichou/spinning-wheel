@@ -1,4 +1,4 @@
-const names = [
+const defaultNames = [
   "Alice",
   "Bob",
   "Charlie",
@@ -23,23 +23,49 @@ const colors = [
 const canvas = document.getElementById("wheel");
 const ctx = canvas.getContext("2d");
 const spinBtn = document.getElementById("spin-btn");
+const autoPickBtn = document.getElementById("auto-pick-btn");
+const importBtn = document.getElementById("import-btn");
+const importInput = document.getElementById("import-input");
+const downloadBtn = document.getElementById("download-btn");
 const resultEl = document.getElementById("result");
+const pickedListEl = document.getElementById("picked-list");
+const confettiContainer = document.getElementById("confetti-container");
+
+const confettiColors = ["#f5c518", "#e4572e", "#29335c", "#669bbc", "#669c35", "#a162e8", "#f49d37", "#d64550"];
 
 const radius = canvas.width / 2;
-const sliceAngle = (2 * Math.PI) / names.length;
 
+// The pointer sits on the right side of the wheel, i.e. canvas angle 0.
+const pointerAngle = 0;
+
+let wheelNames = [...defaultNames];
+let pickedNames = [];
 let currentRotation = 0;
 let isSpinning = false;
+let audioCtx = null;
+let autoPickRunning = false;
+let stopRequested = false;
+
+function sliceAngle() {
+  return (2 * Math.PI) / wheelNames.length;
+}
 
 function drawWheel(rotation) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (wheelNames.length === 0) {
+    return;
+  }
+
+  const slice = sliceAngle();
+
   ctx.save();
   ctx.translate(radius, radius);
   ctx.rotate(rotation);
 
-  names.forEach((name, i) => {
-    const startAngle = i * sliceAngle;
-    const endAngle = startAngle + sliceAngle;
+  wheelNames.forEach((name, i) => {
+    const startAngle = i * slice;
+    const endAngle = startAngle + slice;
 
     ctx.beginPath();
     ctx.moveTo(0, 0);
@@ -49,7 +75,7 @@ function drawWheel(rotation) {
     ctx.fill();
 
     ctx.save();
-    ctx.rotate(startAngle + sliceAngle / 2);
+    ctx.rotate(startAngle + slice / 2);
     ctx.textAlign = "right";
     ctx.fillStyle = "#1e1e2f";
     ctx.font = "bold 16px system-ui, sans-serif";
@@ -64,43 +90,272 @@ function easeOutCubic(t) {
   return 1 - Math.pow(1 - t, 3);
 }
 
-function spin() {
-  if (isSpinning) return;
-  isSpinning = true;
-  spinBtn.disabled = true;
-  resultEl.textContent = "";
+function getAudioContext() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  return audioCtx;
+}
 
-  const extraSpins = 5 + Math.random() * 3;
-  const targetRotation = currentRotation + extraSpins * 2 * Math.PI;
-  const startRotation = currentRotation;
-  const duration = 4000;
-  const startTime = performance.now();
+function playNote(ac, freq, start, duration, type, peakGain) {
+  const osc = ac.createOscillator();
+  const gain = ac.createGain();
 
-  function animate(now) {
-    const elapsed = now - startTime;
-    const t = Math.min(elapsed / duration, 1);
-    const eased = easeOutCubic(t);
-    currentRotation = startRotation + (targetRotation - startRotation) * eased;
-    drawWheel(currentRotation);
+  osc.type = type;
+  osc.frequency.value = freq;
 
-    if (t < 1) {
-      requestAnimationFrame(animate);
-    } else {
-      isSpinning = false;
-      spinBtn.disabled = false;
-      announceWinner(currentRotation);
-    }
+  gain.gain.setValueAtTime(0, start);
+  gain.gain.linearRampToValueAtTime(peakGain, start + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+  osc.connect(gain);
+  gain.connect(ac.destination);
+  osc.start(start);
+  osc.stop(start + duration);
+}
+
+function playShimmer(ac, start, duration, peakGain) {
+  const bufferSize = Math.floor(ac.sampleRate * duration);
+  const buffer = ac.createBuffer(1, bufferSize, ac.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = Math.random() * 2 - 1;
   }
 
-  requestAnimationFrame(animate);
+  const noise = ac.createBufferSource();
+  noise.buffer = buffer;
+
+  const filter = ac.createBiquadFilter();
+  filter.type = "highpass";
+  filter.frequency.value = 5000;
+
+  const gain = ac.createGain();
+  gain.gain.setValueAtTime(0, start);
+  gain.gain.linearRampToValueAtTime(peakGain, start + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+  noise.connect(filter);
+  filter.connect(gain);
+  gain.connect(ac.destination);
+  noise.start(start);
+  noise.stop(start + duration);
+}
+
+function playCheer() {
+  const ac = getAudioContext();
+  const now = ac.currentTime;
+
+  // Cymbal-like shimmer kicks the celebration off
+  playShimmer(ac, now, 0.6, 0.2);
+
+  // Brassy rising arpeggio (C5 E5 G5 C6 E6 G6)
+  const arpeggio = [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98];
+  arpeggio.forEach((freq, i) => {
+    playNote(ac, freq, now + i * 0.06, 0.25, "sawtooth", 0.16);
+  });
+
+  // Sparkling high bell overtones layered on top
+  const sparkle = [2093.0, 2637.02, 3135.96];
+  sparkle.forEach((freq, i) => {
+    playNote(ac, freq, now + 0.2 + i * 0.09, 0.45, "sine", 0.09);
+  });
+
+  // Big sustained triumphant chord to land on
+  const chordStart = now + arpeggio.length * 0.06 + 0.05;
+  const chord = [523.25, 659.25, 783.99, 1046.5, 1318.51];
+  chord.forEach((freq) => {
+    playNote(ac, freq, chordStart, 0.9, "triangle", 0.13);
+  });
+}
+
+function launchConfetti() {
+  const pieceCount = 40;
+
+  for (let i = 0; i < pieceCount; i++) {
+    const piece = document.createElement("div");
+    piece.className = "confetti-piece";
+    piece.style.left = `${Math.random() * 100}%`;
+    piece.style.backgroundColor = confettiColors[Math.floor(Math.random() * confettiColors.length)];
+    piece.style.transform = `rotate(${Math.random() * 360}deg)`;
+    piece.style.animationDuration = `${1.5 + Math.random() * 1.5}s`;
+    piece.style.animationDelay = `${Math.random() * 0.3}s`;
+
+    piece.addEventListener("animationend", () => piece.remove());
+    confettiContainer.appendChild(piece);
+  }
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function updateButtonStates() {
+  const empty = wheelNames.length === 0;
+  spinBtn.disabled = isSpinning || autoPickRunning || empty;
+  autoPickBtn.disabled = !autoPickRunning && (isSpinning || empty);
+  downloadBtn.disabled = pickedNames.length === 0;
+}
+
+function renderPickedList() {
+  pickedListEl.innerHTML = "";
+  pickedNames.forEach((name) => {
+    const li = document.createElement("li");
+    li.textContent = name;
+    pickedListEl.appendChild(li);
+  });
 }
 
 function announceWinner(rotation) {
-  // The pointer sits at the top (angle = -PI/2 in canvas terms, i.e. 3*PI/2).
-  const normalized = ((3 * Math.PI) / 2 - (rotation % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-  const winnerIndex = Math.floor(normalized / sliceAngle) % names.length;
-  resultEl.textContent = `🎉 ${names[winnerIndex]}!`;
+  const slice = sliceAngle();
+  const normalized = ((pointerAngle - rotation) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+  const winnerIndex = Math.floor(normalized / slice) % wheelNames.length;
+  const winner = wheelNames[winnerIndex];
+
+  wheelNames.splice(winnerIndex, 1);
+  pickedNames.push(winner);
+
+  resultEl.textContent = `🎉 ${winner}!`;
+  renderPickedList();
+  playCheer();
+  launchConfetti();
+  drawWheel(currentRotation);
+}
+
+function spin() {
+  return new Promise((resolve) => {
+    if (isSpinning || wheelNames.length === 0) {
+      resolve();
+      return;
+    }
+
+    isSpinning = true;
+    updateButtonStates();
+    resultEl.textContent = "";
+
+    const extraSpins = 5 + Math.random() * 3;
+    const targetRotation = currentRotation + extraSpins * 2 * Math.PI;
+    const startRotation = currentRotation;
+    const duration = 4000;
+    const startTime = performance.now();
+
+    function animate(now) {
+      const elapsed = now - startTime;
+      const t = Math.min(elapsed / duration, 1);
+      const eased = easeOutCubic(t);
+      currentRotation = startRotation + (targetRotation - startRotation) * eased;
+      drawWheel(currentRotation);
+
+      if (t < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        isSpinning = false;
+        announceWinner(currentRotation);
+        updateButtonStates();
+        resolve();
+      }
+    }
+
+    requestAnimationFrame(animate);
+  });
+}
+
+async function autoPickAll() {
+  if (autoPickRunning) {
+    stopRequested = true;
+    autoPickBtn.disabled = true;
+    autoPickBtn.textContent = "Stopping...";
+    return;
+  }
+
+  autoPickRunning = true;
+  stopRequested = false;
+  autoPickBtn.textContent = "Stop Auto Pick";
+  updateButtonStates();
+
+  while (wheelNames.length > 0 && !stopRequested) {
+    await spin();
+    if (stopRequested) {
+      break;
+    }
+    await wait(800);
+  }
+
+  autoPickRunning = false;
+  stopRequested = false;
+  autoPickBtn.textContent = "Auto Pick All";
+  updateButtonStates();
+}
+
+function parseNamesFromText(text) {
+  return text
+    .split(/[\r\n,]+/)
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0);
+}
+
+function parseNamesFromWorkbook(arrayBuffer) {
+  const workbook = XLSX.read(arrayBuffer, { type: "array" });
+  const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+  return rows
+    .flat()
+    .map((cell) => String(cell).trim())
+    .filter((name) => name.length > 0);
+}
+
+function applyImportedNames(parsed) {
+  if (parsed.length === 0) {
+    return;
+  }
+
+  wheelNames = parsed;
+  pickedNames = [];
+  currentRotation = 0;
+  resultEl.textContent = "";
+
+  renderPickedList();
+  drawWheel(currentRotation);
+  updateButtonStates();
+}
+
+function importNames(file) {
+  const reader = new FileReader();
+
+  if (/\.xlsx$/i.test(file.name)) {
+    reader.onload = () => applyImportedNames(parseNamesFromWorkbook(new Uint8Array(reader.result)));
+    reader.readAsArrayBuffer(file);
+  } else {
+    reader.onload = () => applyImportedNames(parseNamesFromText(String(reader.result)));
+    reader.readAsText(file);
+  }
+}
+
+function downloadPickedNames() {
+  const lines = pickedNames.map((name, i) => `${i + 1}. ${name}`);
+  const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "picked-names.txt";
+  link.click();
+
+  URL.revokeObjectURL(url);
 }
 
 drawWheel(currentRotation);
+renderPickedList();
+updateButtonStates();
+
 spinBtn.addEventListener("click", spin);
+autoPickBtn.addEventListener("click", autoPickAll);
+importBtn.addEventListener("click", () => importInput.click());
+importInput.addEventListener("change", () => {
+  const file = importInput.files[0];
+  if (file) {
+    importNames(file);
+  }
+  importInput.value = "";
+});
+downloadBtn.addEventListener("click", downloadPickedNames);

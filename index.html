@@ -7,15 +7,35 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div id="confetti-container" class="confetti-container"></div>
   <main>
     <h1>Spin the Wheel</h1>
     <div class="wheel-wrapper">
       <div class="pointer"></div>
       <canvas id="wheel" width="400" height="400"></canvas>
     </div>
-    <button id="spin-btn">Spin</button>
+
+    <div class="controls">
+      <button id="spin-btn">Spin</button>
+      <button id="auto-pick-btn">Auto Pick All</button>
+      <button id="import-btn">Import Names</button>
+      <button id="download-btn">Download Picked List</button>
+      <input type="file" id="import-input" accept=".txt,.csv,.xlsx" hidden>
+    </div>
+    <p class="hint">
+      Import a <code>.txt</code>, <code>.csv</code>, or <code>.xlsx</code> file.
+      For text/CSV: one name per line (or separated by commas), e.g.
+      <code>Alice, Bob, Charlie</code>. For Excel: one name per cell on the first sheet.
+    </p>
+
     <p id="result"></p>
+
+    <section class="picked-section">
+      <h2>Picked Order</h2>
+      <ol id="picked-list"></ol>
+    </section>
   </main>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
