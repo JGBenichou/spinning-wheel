@@ -27,6 +27,7 @@ const autoPickBtn = document.getElementById("auto-pick-btn");
 const importBtn = document.getElementById("import-btn");
 const importInput = document.getElementById("import-input");
 const downloadBtn = document.getElementById("download-btn");
+const downloadFormatSelect = document.getElementById("download-format");
 const resultEl = document.getElementById("result");
 const pickedListEl = document.getElementById("picked-list");
 const confettiContainer = document.getElementById("confetti-container");
@@ -295,17 +296,69 @@ function importNames(file) {
   }
 }
 
-function downloadPickedNames() {
-  const lines = pickedNames.map((name, i) => `${i + 1}. ${name}`);
-  const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
 
   const link = document.createElement("a");
   link.href = url;
-  link.download = "picked-names.txt";
+  link.download = filename;
   link.click();
 
   URL.revokeObjectURL(url);
+}
+
+function downloadAsTxt() {
+  const lines = pickedNames.map((name, i) => `${i + 1}. ${name}`);
+  downloadBlob(new Blob([lines.join("\n")], { type: "text/plain" }), "picked-names.txt");
+}
+
+function downloadAsCsv() {
+  const rows = ["Order,Name", ...pickedNames.map((name, i) => `${i + 1},"${name.replace(/"/g, '""')}"`)];
+  downloadBlob(new Blob([rows.join("\n")], { type: "text/csv" }), "picked-names.csv");
+}
+
+function downloadAsXlsx() {
+  const data = [["Order", "Name"], ...pickedNames.map((name, i) => [i + 1, name])];
+  const sheet = XLSX.utils.aoa_to_sheet(data);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, "Picked Names");
+  const arrayBuffer = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+  downloadBlob(new Blob([arrayBuffer], { type: "application/octet-stream" }), "picked-names.xlsx");
+}
+
+function downloadAsPdf() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+
+  doc.setFontSize(16);
+  doc.text("Picked Names", 14, 18);
+
+  doc.setFontSize(12);
+  pickedNames.forEach((name, i) => {
+    doc.text(`${i + 1}. ${name}`, 14, 30 + i * 8);
+  });
+
+  doc.save("picked-names.pdf");
+}
+
+function downloadPickedNames() {
+  if (pickedNames.length === 0) {
+    return;
+  }
+
+  switch (downloadFormatSelect.value) {
+    case "csv":
+      downloadAsCsv();
+      break;
+    case "xlsx":
+      downloadAsXlsx();
+      break;
+    case "pdf":
+      downloadAsPdf();
+      break;
+    default:
+      downloadAsTxt();
+  }
 }
 
 drawWheel(currentRotation);
