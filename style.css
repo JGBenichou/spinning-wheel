@@ -8,7 +8,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #1e1e2f;
+  background: #3a3d5c;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   color: #f5f5f5;
 }
@@ -72,7 +72,7 @@ h1 {
 #import-btn,
 #download-btn {
   color: #f5f5f5;
-  background: #3a3a52;
+  background: #565a7e;
 }
 
 .controls button:hover:not(:disabled) {

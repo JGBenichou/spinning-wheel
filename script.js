@@ -12,7 +12,7 @@ const defaultNames = [
 const colors = [
   "#f5c518",
   "#e4572e",
-  "#29335c",
+  "#4cc9f0",
   "#669bbc",
   "#669c35",
   "#a162e8",
@@ -114,57 +114,21 @@ function playNote(ac, freq, start, duration, type, peakGain) {
   osc.stop(start + duration);
 }
 
-function playShimmer(ac, start, duration, peakGain) {
-  const bufferSize = Math.floor(ac.sampleRate * duration);
-  const buffer = ac.createBuffer(1, bufferSize, ac.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    data[i] = Math.random() * 2 - 1;
-  }
-
-  const noise = ac.createBufferSource();
-  noise.buffer = buffer;
-
-  const filter = ac.createBiquadFilter();
-  filter.type = "highpass";
-  filter.frequency.value = 5000;
-
-  const gain = ac.createGain();
-  gain.gain.setValueAtTime(0, start);
-  gain.gain.linearRampToValueAtTime(peakGain, start + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-
-  noise.connect(filter);
-  filter.connect(gain);
-  gain.connect(ac.destination);
-  noise.start(start);
-  noise.stop(start + duration);
-}
-
 function playCheer() {
   const ac = getAudioContext();
   const now = ac.currentTime;
 
-  // Cymbal-like shimmer kicks the celebration off
-  playShimmer(ac, now, 0.6, 0.2);
-
-  // Brassy rising arpeggio (C5 E5 G5 C6 E6 G6)
-  const arpeggio = [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98];
+  // Warm ascending major arpeggio (C5 E5 G5 C6) on a soft sine tone
+  const arpeggio = [523.25, 659.25, 783.99, 1046.5];
   arpeggio.forEach((freq, i) => {
-    playNote(ac, freq, now + i * 0.06, 0.25, "sawtooth", 0.16);
+    playNote(ac, freq, now + i * 0.1, 0.35, "sine", 0.3);
   });
 
-  // Sparkling high bell overtones layered on top
-  const sparkle = [2093.0, 2637.02, 3135.96];
-  sparkle.forEach((freq, i) => {
-    playNote(ac, freq, now + 0.2 + i * 0.09, 0.45, "sine", 0.09);
-  });
-
-  // Big sustained triumphant chord to land on
-  const chordStart = now + arpeggio.length * 0.06 + 0.05;
-  const chord = [523.25, 659.25, 783.99, 1046.5, 1318.51];
+  // Soft sustained major chord (E5 G5 C6) to land on, on a mellow triangle tone
+  const chordStart = now + arpeggio.length * 0.1;
+  const chord = [659.25, 783.99, 1046.5];
   chord.forEach((freq) => {
-    playNote(ac, freq, chordStart, 0.9, "triangle", 0.13);
+    playNote(ac, freq, chordStart, 1.1, "triangle", 0.14);
   });
 }
 
